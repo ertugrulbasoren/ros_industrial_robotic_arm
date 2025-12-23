@@ -1,18 +1,18 @@
-# ROS Derleme ve Geçici Dosyaları
+
 build/
 devel/
 install/
 log/
 .catkin_workspace
 
-# Python Çöpleri
+
 __pycache__/
 *.pyc
 
-# Editör Ayarları (Arkadaşının VSCode ayarı seni bozmasın)
+
 .vscode/
 .idea/
 *.swp
 
-# Gizli anahtarlar (varsa)
+
 *.pem

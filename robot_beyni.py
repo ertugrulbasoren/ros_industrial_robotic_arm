@@ -23,25 +23,25 @@ class SortingRobot:
     def __init__(self):
         rospy.init_node('week6_waste_sorting')
         
-        # --- VISION SETUP ---
+        # Görsel hazırlık
         self.bridge = CvBridge()
         self.image_sub = rospy.Subscriber("/usb_cam/image_raw", Image, self.camera_callback)
         
-        # Ayrıştırma Durumları
-        self.detected_type = None # 'RED' veya 'BLUE' olacak
-        self.is_busy = False      # Robot meşgulse yeni emir alma
         
-        # --- ROBOT SETUP ---
+        self.detected_type = None 
+        self.is_busy = False      
+        
+        
         self.robot_pub = rospy.Publisher('/eff_joint_traj_controller/command', JointTrajectory, queue_size=10)
         self.tf_listener = tf.TransformListener()
         
-        # --- FİZİK (VAKUM) ---
+        
         rospy.wait_for_service('/gazebo/set_model_state')
         self.box_service = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
         self.magnet_active = False
-        self.target_box_name = '' # Yakalanacak kutunun adı dinamik değişecek
+        self.target_box_name = '' 
         
-        # Mıknatıs Thread'i
+        
         self.worker = threading.Thread(target=self.magnet_thread)
         self.worker.daemon = True
         self.worker.start()
@@ -55,7 +55,7 @@ class SortingRobot:
         print(" Robot rengi algılayıp ilgili sepete atacak.")
         print("="*50 + "\n")
         
-        # Ana döngü
+        
         rospy.spin()
 
     def wait_for_connection(self):
@@ -67,37 +67,37 @@ class SortingRobot:
         """
         ÇOKLU RENK TESPİTİ (SORTING ALGORITHM)
         """
-        if self.is_busy: return # Robot çalışıyorken görmezden gel
+        if self.is_busy: return 
 
         try:
             frame = self.bridge.imgmsg_to_cv2(data, "bgr8")
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             
-            # --- 1. KIRMIZI MASKE (PLASTİK) ---
+            # --- 1. KIRMIZI 
             lower_red1 = np.array([0, 70, 50])
             upper_red1 = np.array([10, 255, 255])
             lower_red2 = np.array([170, 70, 50])
             upper_red2 = np.array([180, 255, 255])
             mask_red = cv2.inRange(hsv, lower_red1, upper_red1) + cv2.inRange(hsv, lower_red2, upper_red2)
             
-            # --- 2. MAVİ MASKE (CAM) ---
+            # --- 2. MAVİ 
             lower_blue = np.array([100, 150, 0])
             upper_blue = np.array([140, 255, 255])
             mask_blue = cv2.inRange(hsv, lower_blue, upper_blue)
 
-            # Temizlik
+            
             kernel = np.ones((5,5), np.uint8)
             mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel)
             mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel)
 
-            # --- GÖRSELLEŞTİRME (KARE ÇİZME) ---
+            
             self.draw_box(frame, mask_red, (0, 0, 255), "PLASTIK (Kirmizi)")
             self.draw_box(frame, mask_blue, (255, 0, 0), "CAM (Mavi)")
             
             cv2.imshow("AYRISTIRMA KAMERASI", frame)
             cv2.waitKey(1)
 
-            # --- KARAR MEKANİZMASI ---
+            
             if cv2.countNonZero(mask_red) > 3000:
                 print(">>> TESPİT: KIRMIZI (Plastik) -> SOLA Gidecek")
                 self.target_box_name = 'kutu_kirmizi'
@@ -106,7 +106,7 @@ class SortingRobot:
 
             elif cv2.countNonZero(mask_blue) > 3000:
                 print(">>> TESPİT: MAVİ (Cam) -> SAĞA Gidecek")
-                self.target_box_name = 'kutu_mavi' # Gazebo'daki mavi kutu adı
+                self.target_box_name = 'kutu_mavi' 
                 self.detected_type = 'BLUE'
                 self.start_sorting_thread()
 
@@ -134,7 +134,7 @@ class SortingRobot:
                 try:
                     (trans, rot) = self.tf_listener.lookupTransform('/base_link', '/wrist_3_link', rospy.Time(0))
                     state = ModelState()
-                    state.model_name = self.target_box_name # Dinamik İsim!
+                    state.model_name = self.target_box_name 
                     state.reference_frame = 'base_link'
                     state.pose.position.x = trans[0]
                     state.pose.position.y = trans[1]
@@ -146,10 +146,10 @@ class SortingRobot:
             rate.sleep()
 
     def run_mission(self):
-        # 1. Hizalan
+        
         self.move([-0.2, -1.57, 1.57, -1.57, -1.57, 0.0], 4.0)
         
-        # 2. İn ve VAKUMLA
+        
         self.move([-0.2, -1.8, 2.1, -1.57, -1.57, 0.0], 4.0)
         rospy.sleep(0.5)
         
@@ -157,40 +157,36 @@ class SortingRobot:
         self.magnet_active = True
         rospy.sleep(0.5)
         
-        # 3. Kaldır
+       
         self.move([-0.2, -1.57, 1.57, -1.57, -1.57, 0.0], 3.0)
         
-        # 4. AYRIŞTIRMA (SORTING) NOKTASI
+        
         if self.detected_type == 'RED':
-            # SOL TARAFA (Plastik Atık Yeri)
+            
             print(">>> Hedef: PLASTİK KONTEYNERİ (Sol)")
             self.move([1.57, -1.57, 1.57, -1.57, -1.57, 0.0], 5.0)
             
         elif self.detected_type == 'BLUE':
-            # SAĞ TARAFA (Cam Atık Yeri)
-            # Base eklemi -1.57 (Sağ taraf)
+           
             print(">>> Hedef: CAM KONTEYNERİ (Sağ)")
             self.move([-1.57, -1.57, 1.57, -1.57, -1.57, 0.0], 5.0)
 
-        # 5. Bırak
-        self.move_to_drop() # Ortak bırakma hareketi (aşağı in)
+        
+        self.move_to_drop() 
         
         print(">>> VAKUM KAPATILDI")
         self.magnet_active = False
         rospy.sleep(1.0)
         
-        # 6. Eve Dön ve Sıfırla
+       
         self.go_home_pose()
-        self.is_busy = False # Yeni görev için hazır
+        self.is_busy = False 
         print(">>> SİSTEM HAZIR: Yeni atık bekleniyor...")
 
     def move_to_drop(self):
-        # Robotun o anki Base açısını koruyarak aşağı inmesi lazım
-        # Bu basit demo için sabit bir iniş tanımlıyoruz, geliştirilebilir.
-        # Şimdilik sadece bileği ve dirseği indiriyoruz.
+      
         current_joints = rospy.wait_for_message("/joint_states", JointTrajectoryPoint, timeout=1.0)
-        # Not: Gerçek joint state okuma daha karmaşıktır, burada demo amaçlı
-        # Hedeflenen tarafa göre iniş yapıyoruz:
+       
         
         base_angle = 1.57 if self.detected_type == 'RED' else -1.57
         self.move([base_angle, -1.2, 1.5, -1.57, -1.57, 0.0], 3.0)
